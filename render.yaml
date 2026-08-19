@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: fantasy-chat
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    healthCheckPath: /health
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_BOT_TOKEN
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: POSTGRES_DSN
+        fromDatabase:
+          name: fantasy-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: fantasy-redis
+          type: redis
+          property: connectionString
+
+databases:
+  - name: fantasy-db
+    databaseName: fantasy_chat
+    user: fantasy
