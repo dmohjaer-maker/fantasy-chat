@@ -16,8 +16,8 @@ PostgreSQL persistence, separate admin bot, media moderation.
 1. Push repo to GitHub.
 2. In Render: "Blueprint" -> select `render.yaml`.
 3. Set `BOT_TOKEN`, `ADMIN_BOT_TOKEN`, `ADMIN_IDS` as env vars.
-4. Apply `schema.sql` once against the managed Postgres.
-5. Health check: `GET /health`
+4. The `preDeployCommand` applies `schema.sql` idempotently before each deploy.
+5. The bot runs as an always-on background worker; the internal health endpoint remains available on the configured port.
 
 ## Two bots
 

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import asyncpg
 
 from database import repo
-from redis import client as cache
+from cache import client as cache
 from utils.helpers import match_code
 
 

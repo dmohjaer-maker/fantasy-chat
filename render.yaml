@@ -6,6 +6,8 @@ services:
     startCommand: python main.py
     healthCheckPath: /health
     envVars:
+      - key: ENV
+        value: production
       - key: BOT_TOKEN
         sync: false
       - key: ADMIN_BOT_TOKEN

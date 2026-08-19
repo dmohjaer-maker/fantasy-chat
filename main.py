@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 
 from aiohttp import web
 from aiogram import Bot, Dispatcher
@@ -9,7 +10,7 @@ from aiogram.fsm.storage.redis import RedisStorage, DefaultKeyBuilder
 
 from config.settings import get_settings
 from database.connection import init_pool
-from redis.client import init_redis
+from cache.client import init_redis
 from bot import user_handlers
 from admin import handlers as admin_handlers
 from security.ratelimit import RateLimitMiddleware
@@ -19,7 +20,7 @@ s = get_settings()
 
 async def health(request):
     from database.connection import get_pool
-    from redis.client import get_redis
+    from cache.client import get_redis
     try:
         await get_pool().fetchval("SELECT 1")
         await get_redis().ping()
@@ -54,7 +55,9 @@ async def main():
     app.router.add_get("/health", health)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", s.health_port)
+    # Render provides PORT for web services. Keep HEALTH_PORT as the local fallback.
+    port = int(os.environ.get("PORT", s.health_port))
+    site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 
     await asyncio.gather(
