@@ -2,6 +2,8 @@ import asyncio
 import logging
 import os
 
+import asyncpg
+
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -17,6 +19,29 @@ from admin import handlers as admin_handlers
 from security.ratelimit import RateLimitMiddleware
 
 s = get_settings()
+logger = logging.getLogger("fantasy_chat")
+
+
+async def acquire_instance_lock(name: str) -> asyncpg.Connection:
+    """Hold a Postgres advisory lock for the lifetime of this process.
+
+    Render can briefly overlap old and new processes during a deploy. Holding a
+    dedicated connection prevents two copies of this application from polling
+    the same bot token at the same time.
+    """
+    connection = await asyncpg.connect(s.postgres_dsn)
+    lock_key = f"fantasy-chat:{name}"
+    acquired = await connection.fetchval(
+        "SELECT pg_try_advisory_lock(hashtextextended($1, 0))", lock_key
+    )
+    if not acquired:
+        await connection.close()
+        raise RuntimeError(
+            "Another fantasy-chat instance is already running "
+            f"the {name} polling loop"
+        )
+    logger.info("Acquired single-instance lock for %s", name)
+    return connection
 
 
 async def health(request):
@@ -42,6 +67,11 @@ async def main():
     await init_pool()
     r = init_redis()
     await r.ping()
+
+    # Keep polling single-instance across overlapping Render deploys. The
+    # dedicated connections stay open until the corresponding dispatcher stops.
+    user_lock = await acquire_instance_lock("user-bot")
+    admin_lock = await acquire_instance_lock("admin-bot")
 
     storage = RedisStorage(redis=r, key_builder=DefaultKeyBuilder(with_destiny=True))
 
@@ -70,6 +100,11 @@ async def main():
     await site.start()
 
     try:
+        # Explicitly remove any stale webhook before switching to long polling.
+        # This is safe because this service owns both bot tokens.
+        await bot.delete_webhook(drop_pending_updates=False)
+        await admin_bot.delete_webhook(drop_pending_updates=False)
+        logger.info("Starting user and admin Telegram polling")
         await asyncio.gather(
             dp.start_polling(bot),
             admin_dp.start_polling(admin_bot),
@@ -78,6 +113,8 @@ async def main():
         await storage.close()
         await bot.session.close()
         await admin_bot.session.close()
+        await user_lock.close()
+        await admin_lock.close()
         await r.aclose()
         await get_pool().close()
 
