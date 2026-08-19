@@ -16,7 +16,7 @@ PostgreSQL persistence, separate admin bot, media moderation.
 1. Push repo to GitHub.
 2. In Render: "Blueprint" -> select `render.yaml`.
 3. Set `BOT_TOKEN`, `ADMIN_BOT_TOKEN`, `ADMIN_IDS` as env vars.
-4. Apply `schema.sql` once against the managed Postgres.
+4. The app applies the idempotent `schema.sql` on startup.
 5. Health check: `GET /health`
 
 ## Two bots
@@ -38,10 +38,3 @@ PostgreSQL persistence, separate admin bot, media moderation.
   settings, and bans follows the same router pattern but isn't fully built out.
 - **No retention/cleanup worker yet** — `MEDIA_RETENTION_DAYS` is read from
   settings but nothing currently deletes old `media_moderation` rows/files.
-- The `redis/` package name shadows the third-party `redis` pip package.
-  `redis/client.py` does `import redis.asyncio as redis`, which will try to
-  import itself once this is on `PYTHONPATH` as a top-level package. Rename
-  the folder (e.g. to `cache/`) and update the two imports
-  (`from redis import client as cache` → `from cache import client as cache`,
-  and `from redis.client import hit_rate` → `from cache.client import hit_rate`)
-  before running it for real.

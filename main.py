@@ -8,30 +8,31 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage, DefaultKeyBuilder
 
 from config.settings import get_settings
-from database.connection import init_pool
-from redis.client import init_redis
+from database.connection import get_pool, init_pool, init_schema
 from bot import user_handlers
 from admin import handlers as admin_handlers
 from security.ratelimit import RateLimitMiddleware
+from cache.client import get_redis, init_redis
 
 s = get_settings()
 
 
 async def health(request):
-    from database.connection import get_pool
-    from redis.client import get_redis
     try:
         await get_pool().fetchval("SELECT 1")
         await get_redis().ping()
         return web.json_response({"status": "ok"})
     except Exception as e:
-        return web.json_response({"status": "error", "detail": str(e)}, status=503)
+        logging.getLogger(__name__).exception("Health check failed")
+        return web.json_response({"status": "error"}, status=503)
 
 
 async def main():
     logging.basicConfig(level=s.log_level)
     await init_pool()
+    await init_schema()
     r = init_redis()
+    await r.ping()
 
     storage = RedisStorage(redis=r, key_builder=DefaultKeyBuilder(with_destiny=True))
 
@@ -57,11 +58,22 @@ async def main():
     site = web.TCPSite(runner, "0.0.0.0", s.health_port)
     await site.start()
 
-    await asyncio.gather(
-        dp.start_polling(bot),
-        admin_dp.start_polling(admin_bot),
-    )
+    try:
+        await asyncio.gather(
+            dp.start_polling(bot),
+            admin_dp.start_polling(admin_bot),
+        )
+    finally:
+        await storage.close()
+        await bot.session.close()
+        await admin_bot.session.close()
+        await r.aclose()
+        await get_pool().close()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception:
+        logging.getLogger(__name__).exception("Fantasy Chat stopped during startup or polling")
+        raise

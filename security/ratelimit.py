@@ -1,7 +1,7 @@
 from aiogram import BaseMiddleware
 from aiogram.types import Message, CallbackQuery
 from config.settings import get_settings
-from redis.client import hit_rate
+from cache.client import hit_rate
 
 
 class RateLimitMiddleware(BaseMiddleware):

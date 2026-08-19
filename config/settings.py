@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,7 +14,11 @@ class Settings(BaseSettings):
 
     env: str = "development"
     log_level: str = "INFO"
-    health_port: int = 8080
+    # Render injects PORT; HEALTH_PORT remains supported for local runs.
+    health_port: int = Field(
+        default=8080,
+        validation_alias=AliasChoices("PORT", "HEALTH_PORT"),
+    )
 
     min_age: int = 18
     message_rate_limit: int = 10

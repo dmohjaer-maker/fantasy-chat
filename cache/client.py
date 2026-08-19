@@ -1,4 +1,5 @@
 import redis.asyncio as redis
+
 from config.settings import get_settings
 
 r: redis.Redis | None = None
@@ -47,10 +48,15 @@ def active_key(uid) -> str:
 
 
 async def set_active(uid, match_id, partner, partner_tg, category_id):
-    await get_redis().hset(active_key(uid), mapping={
-        "match_id": match_id, "partner": partner,
-        "partner_tg": partner_tg, "category": category_id,
-    })
+    await get_redis().hset(
+        active_key(uid),
+        mapping={
+            "match_id": match_id,
+            "partner": partner,
+            "partner_tg": partner_tg,
+            "category": category_id,
+        },
+    )
 
 
 async def get_active(uid):

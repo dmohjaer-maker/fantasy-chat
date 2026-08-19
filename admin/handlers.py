@@ -4,7 +4,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 
 from config.settings import get_settings
 from database import repo
-from redis import client as cache
+from cache import client as cache
 
 router = Router()
 s = get_settings()
