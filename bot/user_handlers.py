@@ -2,7 +2,7 @@ import uuid
 
 from aiogram import Router, F, Bot
 from aiogram.filters import CommandStart
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 
 from config.settings import get_settings
@@ -48,6 +48,8 @@ async def start(msg: Message, state: FSMContext):
             reply_markup=kb.start_menu(),
         )
     else:
+        # Clear any keyboard cached by Telegram before sending the styled menu.
+        await msg.answer("🔄 در حال بروزرسانی منو...", reply_markup=ReplyKeyboardRemove())
         await msg.answer("🏠 منوی اصلی", reply_markup=kb.main_menu())
 
 
