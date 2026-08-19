@@ -22,6 +22,9 @@ def main_menu() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="🚨 پشتیبانی")],
         ],
         resize_keyboard=True,
+        is_persistent=True,
+        one_time_keyboard=False,
+        input_field_placeholder="یک گزینه انتخاب کنید...",
     )
 
 
