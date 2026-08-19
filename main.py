@@ -2,8 +2,6 @@ import asyncio
 import logging
 import os
 
-import asyncpg
-
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -20,27 +18,6 @@ from security.ratelimit import RateLimitMiddleware
 
 s = get_settings()
 logger = logging.getLogger("fantasy_chat")
-
-
-async def acquire_instance_lock(name: str) -> asyncpg.Connection:
-    """Hold a Postgres advisory lock for the lifetime of this process.
-
-    Render keeps the previous instance alive until the replacement passes its
-    health check.  Therefore the replacement must wait for the old poller to
-    release its lock instead of failing the deployment immediately.
-    """
-    lock_key = f"fantasy-chat:{name}"
-    while True:
-        connection = await asyncpg.connect(s.postgres_dsn)
-        acquired = await connection.fetchval(
-            "SELECT pg_try_advisory_lock(hashtextextended($1, 0))", lock_key
-        )
-        if acquired:
-            logger.info("Acquired single-instance lock for %s", name)
-            return connection
-        await connection.close()
-        logger.info("Waiting for the previous %s poller to stop", name)
-        await asyncio.sleep(2)
 
 
 async def health(request):
@@ -77,11 +54,6 @@ async def main():
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 
-    # Keep polling single-instance across overlapping Render deploys. The
-    # dedicated connections stay open until the corresponding dispatcher stops.
-    user_lock = await acquire_instance_lock("user-bot")
-    admin_lock = await acquire_instance_lock("admin-bot")
-
     storage = RedisStorage(redis=r, key_builder=DefaultKeyBuilder(with_destiny=True))
 
     # Main bot
@@ -112,8 +84,6 @@ async def main():
         await storage.close()
         await bot.session.close()
         await admin_bot.session.close()
-        await user_lock.close()
-        await admin_lock.close()
         await r.aclose()
         await get_pool().close()
         await runner.cleanup()
