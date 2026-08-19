@@ -92,6 +92,15 @@ async def got_age(msg: Message, state: FSMContext):
 async def got_fantasy(cq: CallbackQuery, state: FSMContext):
     cat_id = uuid.UUID(cq.data.split(":", 1)[1])
     data = await state.get_data()
+    if data.get("editing_user_id"):
+        await repo.update_user(
+            uuid.UUID(data["editing_user_id"]),
+            fantasy_category_id=cat_id,
+        )
+        await state.clear()
+        await cq.message.answer("✅ علاقه شما تغییر کرد.", reply_markup=kb.main_menu())
+        await cq.answer()
+        return
     await repo.create_user(cq.from_user.id, data["nickname"], data["age"], cat_id)
     await state.clear()
     await cq.message.answer("✅ پروفایل شما ساخته شد!", reply_markup=kb.main_menu())
@@ -102,6 +111,148 @@ async def got_fantasy(cq: CallbackQuery, state: FSMContext):
 @router.message(F.text == "🔎 پیدا کردن پارتنر")
 async def search_btn(msg: Message):
     await do_search(msg)
+
+
+@router.message(F.text == "🎭 فانتزی من")
+async def fantasy_btn(msg: Message, state: FSMContext):
+    user = await repo.fetch_user_by_telegram(msg.from_user.id)
+    if user is None:
+        await msg.answer("اول پروفایل بسازید.", reply_markup=kb.start_menu())
+        return
+    categories = await repo.list_categories()
+    if not categories:
+        await msg.answer("🎭 فعلاً هیچ علاقه‌ای برای انتخاب فعال نیست.")
+        return
+    await state.set_state(Reg.waiting_fantasy)
+    await state.update_data(editing_user_id=str(user["id"]))
+    await msg.answer(
+        "🎭 علاقه یا فانتزی موردنظر خود را انتخاب کنید.",
+        reply_markup=kb.categories_keyboard(categories),
+    )
+
+
+@router.message(F.text == "👤 پروفایل من")
+async def profile_btn(msg: Message):
+    user = await repo.fetch_user_by_telegram(msg.from_user.id)
+    if user is None:
+        await msg.answer("اول پروفایل بسازید.", reply_markup=kb.start_menu())
+        return
+    category = (
+        await repo.get_category(user["fantasy_category_id"])
+        if user["fantasy_category_id"]
+        else None
+    )
+    category_name = f"{category['emoji']} {category['name']}" if category else "انتخاب نشده"
+    await msg.answer(
+        f"👤 <b>پروفایل شما</b>\n\n"
+        f"نام مستعار: {user['nickname']}\n"
+        f"سن: {user['age']}\n"
+        f"علاقه: {category_name}",
+        reply_markup=kb.profile_menu(),
+    )
+
+
+@router.message(F.text == "💬 چت فعال")
+async def active_chat_btn(msg: Message):
+    user = await repo.fetch_user_by_telegram(msg.from_user.id)
+    if user is None:
+        await msg.answer("اول پروفایل بسازید.", reply_markup=kb.start_menu())
+        return
+    session = await matching.active_session(user["id"])
+    if session:
+        await msg.answer(
+            "💬 شما در حال حاضر یک گفتگوی فعال دارید.\n"
+            "پیام خود را ارسال کنید تا به طرف مقابل برسد.",
+            reply_markup=kb.match_actions(session["match_id"]),
+        )
+    else:
+        await msg.answer("💬 در حال حاضر گفتگوی فعالی ندارید.", reply_markup=kb.main_menu())
+
+
+@router.message(F.text == "📊 آمار من")
+async def stats_btn(msg: Message):
+    user = await repo.fetch_user_by_telegram(msg.from_user.id)
+    if user is None:
+        await msg.answer("اول پروفایل بسازید.", reply_markup=kb.start_menu())
+        return
+    from database.connection import get_pool
+    total = await get_pool().fetchval(
+        "SELECT count(*) FROM matches WHERE user_a=$1 OR user_b=$1", user["id"]
+    )
+    active = await repo.get_active_match(user["id"])
+    await msg.answer(
+        f"📊 <b>آمار شما</b>\n\n"
+        f"تعداد گفتگوها: {total}\n"
+        f"وضعیت فعلی: {'در گفتگوی فعال' if active else 'آماده برای جستجو'}",
+        reply_markup=kb.main_menu(),
+    )
+
+
+@router.message(F.text == "⚙️ تنظیمات")
+async def settings_btn(msg: Message):
+    await msg.answer(
+        "⚙️ <b>تنظیمات</b>\n\n"
+        "برای حفظ امنیت، گفتگوها ناشناس هستند و متن پیام‌ها ذخیره نمی‌شود.\n"
+        "برای تغییر اطلاعات پروفایل از بخش «پروفایل من» استفاده کنید.",
+        reply_markup=kb.main_menu(),
+    )
+
+
+@router.message(F.text == "📖 قوانین")
+async def rules_btn(msg: Message):
+    await msg.answer(RULES, reply_markup=kb.main_menu())
+
+
+@router.message(F.text == "ℹ️ درباره ربات")
+async def about_btn(msg: Message):
+    await msg.answer(
+        "ℹ️ <b>درباره Fantasy Chat</b>\n\n"
+        "یک فضای ناشناس برای آشنایی بزرگسالان با افراد دارای علایق مشابه.",
+        reply_markup=kb.main_menu(),
+    )
+
+
+@router.message(F.text == "🚨 پشتیبانی")
+async def support_btn(msg: Message):
+    await msg.answer(
+        "🚨 برای گزارش مزاحمت یا محتوای نامناسب، از دکمه گزارش در گفتگوی فعال استفاده کنید.",
+        reply_markup=kb.main_menu(),
+    )
+
+
+@router.callback_query(F.data == "rules")
+async def rules_callback(cq: CallbackQuery):
+    await cq.message.answer(RULES, reply_markup=kb.main_menu())
+    await cq.answer()
+
+
+@router.callback_query(F.data == "about")
+async def about_callback(cq: CallbackQuery):
+    await cq.message.answer(
+        "ℹ️ <b>درباره Fantasy Chat</b>\n\n"
+        "یک فضای ناشناس برای آشنایی بزرگسالان با افراد دارای علایق مشابه.",
+        reply_markup=kb.main_menu(),
+    )
+    await cq.answer()
+
+
+@router.callback_query(F.data == "edit_fantasy")
+async def edit_fantasy(cq: CallbackQuery, state: FSMContext):
+    user = await repo.fetch_user_by_telegram(cq.from_user.id)
+    if user is None:
+        await cq.answer("ابتدا پروفایل بسازید.", show_alert=True)
+        return
+    categories = await repo.list_categories()
+    if not categories:
+        await cq.answer("فعلاً گزینه‌ای برای انتخاب وجود ندارد.", show_alert=True)
+        return
+    await state.set_state(Reg.waiting_fantasy)
+    await state.update_data(editing_user_id=str(user["id"]))
+    await cq.message.answer(
+        "🎭 علاقه جدید خود را انتخاب کنید.",
+        reply_markup=kb.categories_keyboard(categories),
+    )
+    await cq.answer()
 
 
 async def do_search(msg: Message):

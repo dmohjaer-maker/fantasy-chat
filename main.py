@@ -25,23 +25,22 @@ logger = logging.getLogger("fantasy_chat")
 async def acquire_instance_lock(name: str) -> asyncpg.Connection:
     """Hold a Postgres advisory lock for the lifetime of this process.
 
-    Render can briefly overlap old and new processes during a deploy. Holding a
-    dedicated connection prevents two copies of this application from polling
-    the same bot token at the same time.
+    Render keeps the previous instance alive until the replacement passes its
+    health check.  Therefore the replacement must wait for the old poller to
+    release its lock instead of failing the deployment immediately.
     """
-    connection = await asyncpg.connect(s.postgres_dsn)
     lock_key = f"fantasy-chat:{name}"
-    acquired = await connection.fetchval(
-        "SELECT pg_try_advisory_lock(hashtextextended($1, 0))", lock_key
-    )
-    if not acquired:
-        await connection.close()
-        raise RuntimeError(
-            "Another fantasy-chat instance is already running "
-            f"the {name} polling loop"
+    while True:
+        connection = await asyncpg.connect(s.postgres_dsn)
+        acquired = await connection.fetchval(
+            "SELECT pg_try_advisory_lock(hashtextextended($1, 0))", lock_key
         )
-    logger.info("Acquired single-instance lock for %s", name)
-    return connection
+        if acquired:
+            logger.info("Acquired single-instance lock for %s", name)
+            return connection
+        await connection.close()
+        logger.info("Waiting for the previous %s poller to stop", name)
+        await asyncio.sleep(2)
 
 
 async def health(request):
@@ -68,6 +67,16 @@ async def main():
     r = init_redis()
     await r.ping()
 
+    # Start health before taking the polling locks. Render uses this endpoint
+    # to decide when it can stop the old instance during an overlapping deploy.
+    app = web.Application()
+    app.router.add_get("/health", health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", s.health_port))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
     # Keep polling single-instance across overlapping Render deploys. The
     # dedicated connections stay open until the corresponding dispatcher stops.
     user_lock = await acquire_instance_lock("user-bot")
@@ -89,16 +98,6 @@ async def main():
     admin_dp.callback_query.middleware(admin_handlers.AdminAuth())
     admin_dp.include_router(admin_handlers.router)
 
-    # Health server
-    app = web.Application()
-    app.router.add_get("/health", health)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    # Render provides PORT for web services. Keep HEALTH_PORT as the local fallback.
-    port = int(os.environ.get("PORT", s.health_port))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-
     try:
         # Explicitly remove any stale webhook before switching to long polling.
         # This is safe because this service owns both bot tokens.
@@ -117,6 +116,7 @@ async def main():
         await admin_lock.close()
         await r.aclose()
         await get_pool().close()
+        await runner.cleanup()
 
 
 if __name__ == "__main__":

@@ -4,16 +4,6 @@ from aiogram.types import (
 )
 
 
-def _button(text: str, style: str | None = None) -> KeyboardButton:
-    """Build a native Telegram button with a graceful legacy fallback."""
-    if style:
-        try:
-            return KeyboardButton(text=text, style=style)
-        except TypeError:
-            pass
-    return KeyboardButton(text=text)
-
-
 def start_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👤 ساخت پروفایل", callback_data="profile_build")],
@@ -24,14 +14,14 @@ def start_menu() -> InlineKeyboardMarkup:
 
 def main_menu() -> ReplyKeyboardMarkup:
     rows = [
-        [("🔎 پیدا کردن پارتنر", "primary"), ("🎭 فانتزی من", "success")],
-        [("👤 پروفایل من", "primary"), ("💬 چت فعال", "success")],
-        [("📊 آمار من", "primary"), ("⚙️ تنظیمات", "success")],
-        [("📖 قوانین", "primary"), ("ℹ️ درباره ربات", "primary")],
-        [("🚨 پشتیبانی", "danger")],
+        ["🔎 پیدا کردن پارتنر", "🎭 فانتزی من"],
+        ["👤 پروفایل من", "💬 چت فعال"],
+        ["📊 آمار من", "⚙️ تنظیمات"],
+        ["📖 قوانین", "ℹ️ درباره ربات"],
+        ["🚨 پشتیبانی"],
     ]
     return ReplyKeyboardMarkup(
-        keyboard=[[_button(text, style) for text, style in row] for row in rows],
+        keyboard=[[KeyboardButton(text=text) for text in row] for row in rows],
         resize_keyboard=True,
         is_persistent=True,
         one_time_keyboard=False,
