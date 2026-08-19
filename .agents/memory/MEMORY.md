@@ -1,0 +1,1 @@
+- [Telegram keyboard colors](telegram-keyboard-colors.md) — native bot keyboards inherit Telegram theme colors; per-button colors require a Web App.
